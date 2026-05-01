@@ -15,6 +15,7 @@ from people_mcp.tools.aggregate_people import aggregate_people as _aggregate_peo
 from people_mcp.tools.get_person import get_person as _get_person
 from people_mcp.tools.get_org_subtree import get_org_subtree as _get_org_subtree
 from people_mcp.schema import build_schema_payload
+from people_mcp.prompts import team_summary as _team_summary, org_overview as _org_overview
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -125,6 +126,25 @@ def schema_resource() -> dict:
     """
     with get_conn() as conn:
         return build_schema_payload(conn)
+
+
+@mcp.prompt()
+def team_summary(team_name: str) -> str:
+    """Reusable workflow: summarize a single team (headcount, salary band,
+    common roles, longest tenure). The host renders this template; the
+    agent then drives it via aggregate_people and list_people.
+    """
+    return _team_summary(team_name)
+
+
+@mcp.prompt()
+def org_overview() -> str:
+    """Reusable workflow: company-wide HR snapshot (totals, breakdowns by
+    team and office, average salary in USD/year, top tenure). Driven by
+    aggregate_people and list_people; FX rates are disclosed via the
+    fx_rates_as_of field.
+    """
+    return _org_overview()
 
 
 def main() -> None:
