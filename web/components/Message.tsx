@@ -1,3 +1,5 @@
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import type { ChatMessage } from "@/lib/types"
 import { ToolCallPill } from "./ToolCallPill"
 
@@ -21,8 +23,8 @@ export function Message({ msg }: { msg: ChatMessage }) {
     <div style={{ alignSelf: "flex-start", maxWidth: 800 }}>
       {msg.blocks.map((b, i) =>
         b.kind === "text" ? (
-          <div key={i} style={{ whiteSpace: "pre-wrap" }}>
-            {b.text}
+          <div key={i} className="prose prose-sm max-w-none">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{b.text}</ReactMarkdown>
           </div>
         ) : (
           <ToolCallPill key={i} block={b} />
