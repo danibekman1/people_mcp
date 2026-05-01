@@ -62,13 +62,12 @@ type FinalEvent =
   | {
       type: "done"
       conversation_id: string
-      title?: string
       total_ms: number
       iters: number
       tool_calls: number
     }
-  | { type: "cancelled"; conversation_id: string; title?: string }
-  | { type: "error"; conversation_id: string; message: string; title?: string }
+  | { type: "cancelled"; conversation_id: string }
+  | { type: "error"; conversation_id: string; message: string }
 
 async function* runLoop(
   conversationId: string,
@@ -198,14 +197,13 @@ async function* runLoop(
       }
     }
   } finally {
-    // Auto-title on the first turn before persisting + yielding the final
-    // event, so the sidebar refresh fired by 'done' picks up the new title
-    // immediately. Falls back silently to the truncated initial title on
-    // timeout/failure (see web/lib/titler.ts).
-    if (isFirstTurn) {
+    // Title only on the success path. Cancelled or errored turns skip the
+    // Haiku call so the user pays no extra latency for a turn they're
+    // already abandoning. The title lands in chat.db before yielding 'done',
+    // so the sidebar refresh fired by 'done' picks it up via re-fetch.
+    if (isFirstTurn && finalEvent?.type === "done") {
       try {
-        const title = await titleConversation(conversationId, userMessage)
-        if (title && finalEvent) finalEvent.title = title
+        await titleConversation(conversationId, userMessage)
       } catch (err) {
         console.error("auto-titling failed", err)
       }
