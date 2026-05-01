@@ -11,6 +11,7 @@ import {
   getMessages,
 } from "@/lib/chat-db"
 import { historyForModel } from "@/lib/history"
+import { log } from "@/lib/log"
 import { titleConversation } from "@/lib/titler"
 import type { MessageStatus, PersistedBlock } from "@/lib/types"
 
@@ -115,9 +116,12 @@ async function* runLoop(
     // failed we fall back to the literal new turn so the request still works.
     messages.push({ role: "user", content: userMessage })
   }
-  console.log(
-    `[chat] conv=${conversationId.slice(0, 8)} prior=${messages.length} model=${CHAT_MODEL}`,
-  )
+  log.info("turn.start", {
+    conversation_id: conversationId,
+    request_id: requestId,
+    prior_messages: messages.length,
+    model: CHAT_MODEL,
+  })
 
   // The persisted assistant row interleaves text / tool_use / tool_result
   // pseudo-blocks in stream order, so replay can rebuild the UI 1:1. This is
@@ -125,6 +129,7 @@ async function* runLoop(
   const persisted: PersistedBlock[] = []
   let status: MessageStatus = "done"
   let totalToolCalls = 0
+  let totalIters = 0
   let finalEvent: FinalEvent | null = null
 
   function appendText(text: string) {
@@ -139,6 +144,7 @@ async function* runLoop(
 
   try {
     outer: for (let iter = 0; iter < MAX_ITERS; iter++) {
+      totalIters = iter + 1
       if (cancelled.has(requestId)) {
         cancelled.delete(requestId)
         status = "cancelled"
@@ -248,16 +254,30 @@ async function* runLoop(
       try {
         await titleConversation(conversationId, userMessage)
       } catch (err) {
-        console.error("auto-titling failed", err)
+        log.warn("auto_titling.failed", {
+          conversation_id: conversationId,
+          error: String(err),
+        })
       }
     }
     if (persisted.length > 0) {
       try {
         appendMessage(conversationId, "assistant", persisted, status)
       } catch (err) {
-        console.error("appendMessage failed", err)
+        log.error("append_message.failed", {
+          conversation_id: conversationId,
+          error: String(err),
+        })
       }
     }
+    log.info("turn.end", {
+      conversation_id: conversationId,
+      request_id: requestId,
+      status,
+      iters: totalIters,
+      tool_calls: totalToolCalls,
+      total_ms: Date.now() - startedAt,
+    })
     if (finalEvent) yield finalEvent
   }
 }
