@@ -27,3 +27,6 @@ docs/plans/
 
 # LibreOffice lock files
 .~lock.*#
+
+# Playwright MCP screenshots/snapshots
+.playwright-mcp/
