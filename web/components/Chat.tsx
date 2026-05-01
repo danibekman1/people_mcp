@@ -144,21 +144,17 @@ export function Chat({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", minWidth: 0 }}>
-      <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: 16,
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
-        {msgs.length === 0 && <Suggestions onPick={(s) => send(s)} />}
-        {msgs.map((m, i) => (
-          <Message key={i} msg={m} />
-        ))}
+    <div className="flex h-screen min-w-0 flex-col bg-bg">
+      <div className="flex-1 overflow-y-auto">
+        {msgs.length === 0 ? (
+          <Suggestions onPick={(s) => send(s)} />
+        ) : (
+          <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-6">
+            {msgs.map((m, i) => (
+              <Message key={i} msg={m} />
+            ))}
+          </div>
+        )}
       </div>
       <Composer busy={busy} onSend={send} onStop={stop} />
     </div>
