@@ -11,17 +11,30 @@ See "Choices and trade-offs" below.
 
 ---
 
-## 1. Run it
+## 1. Prerequisites
 
-You'll need Docker, Docker Compose, and an Anthropic API key
-(`https://console.anthropic.com/`). Then:
+- **Docker** + **Docker Compose v2** (Docker Desktop on Mac/Windows; `docker.io`
+  on Linux).
+- **Git** to clone the repo.
+- An **Anthropic API key** - free signup at <https://console.anthropic.com>, copy
+  one from "API Keys". New accounts get a small free credit which is plenty
+  for this demo.
+- Ports **3000** and **8000** free locally (`lsof -i :3000` to check; edit the
+  port mapping in `docker-compose.yml` if either is taken).
+- Optional: **Claude Code** installed and logged in if you also want to inspect
+  the MCP server directly via `claude mcp add` (see §7). This uses Claude
+  Code's own auth, so no extra API key is needed for that path.
+
+---
+
+## 2. Run it
 
 ```bash
 ./run.sh
 # prompts for ANTHROPIC_API_KEY on first run, writes it to .env, then docker compose up
 ```
 
-Open <http://localhost:3000>.
+Open <http://localhost:3000>. First build is ~60s; subsequent boots are ~5s.
 
 Manual fallback:
 
@@ -32,7 +45,7 @@ docker compose up
 
 ---
 
-## 2. Architecture
+## 3. Architecture
 
 ```
 ┌──────────┐    SSE     ┌──────────────────┐    Anthropic SDK     ┌──────────┐
@@ -72,7 +85,7 @@ auto-titled by a Haiku call after the first turn.
 
 ---
 
-## 3. Repo tour
+## 4. Repo tour
 
 ```
 server/    Python MCP server. tools/ holds the four tool implementations.
@@ -89,7 +102,7 @@ the self-correction loop you'll see fire in the demo.
 
 ---
 
-## 4. Try it
+## 5. Try it
 
 Five questions to paste into the chat:
 
@@ -114,7 +127,7 @@ at `web/data/chat.db`.
 
 ---
 
-## 5. Eval suite
+## 6. Eval suite
 
 Seven end-to-end cases drive `make eval`. Each one POSTs a real question to
 `/api/chat`, consumes the SSE stream, and asserts which tools were called,
@@ -157,7 +170,7 @@ make eval
 
 ---
 
-## 6. Inspect the MCP server with Claude Code
+## 7. Inspect the MCP server with Claude Code
 
 If you'd rather inspect the MCP server directly without the chat UI:
 
@@ -188,7 +201,7 @@ produce the same shape of answer for different teams.
 
 ---
 
-## 7. How I'd extend this
+## 8. How I'd extend this
 
 - **Auth.** A real deployment would sit behind SSO and per-field RBAC (e.g.
   salary visible to managers only). The MCP server is reachable only on the
@@ -205,7 +218,7 @@ produce the same shape of answer for different teams.
 
 ---
 
-## 8. Choices and trade-offs
+## 9. Choices and trade-offs
 
 - **FastMCP** over the lower-level SDK: one decorator per tool keeps the tool
   file at ~30 lines each. Worth the dependency for tool-design clarity.
@@ -248,7 +261,7 @@ produce the same shape of answer for different teams.
 
 ---
 
-## 9. Project structure
+## 10. Project structure
 
 ```
 shapes/
@@ -304,7 +317,7 @@ six-case end-to-end eval; `make docker-up` brings the stack up;
 
 ---
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 - **"Port 3000/8000 already in use."** Stop the offending process or change
   the port mapping in `docker-compose.yml`.
