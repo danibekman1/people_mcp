@@ -3,6 +3,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+# Most fields are nullable to accommodate 'pending_arrival' employees who have
+# only a name and email recorded. Only identifying fields are NOT NULL.
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS people (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -10,20 +12,20 @@ CREATE TABLE IF NOT EXISTS people (
   first_name      TEXT NOT NULL,
   last_name       TEXT NOT NULL,
   work_status     TEXT NOT NULL,
-  start_date      DATE NOT NULL,
-  job             TEXT NOT NULL,
+  start_date      DATE,
+  job             TEXT,
   work_email      TEXT NOT NULL UNIQUE,
-  team            TEXT NOT NULL,
+  team            TEXT,
   reports_to      TEXT,
-  office          TEXT NOT NULL,
-  salary_amount   REAL NOT NULL,
-  salary_currency TEXT NOT NULL,
-  salary_type     TEXT NOT NULL,
-  country         TEXT NOT NULL,
-  city            TEXT NOT NULL,
-  date_of_birth   DATE NOT NULL,
+  office          TEXT,
+  salary_amount   REAL,
+  salary_currency TEXT,
+  salary_type     TEXT,
+  country         TEXT,
+  city            TEXT,
+  date_of_birth   DATE,
   gender          TEXT,
-  contract_type   TEXT NOT NULL
+  contract_type   TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_people_team    ON people(team);
