@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Node
+node_modules/
+.next/
+out/
+dist/
+
+# Generated DBs (rebuilt on boot)
+server/data/people.db
+web/data/chat.db
+
+# Env
+.env
+.env.local
+
+# Local planning artifacts
+docs/plans/
+
+# OS
+.DS_Store
+
+# LibreOffice lock files
+.~lock.*#
