@@ -68,9 +68,16 @@ export async function POST(req: NextRequest) {
   })
 }
 
+// Stop arriving after the loop has already completed never gets observed;
+// expire the flag after 60s so the Set can't leak entries indefinitely.
+const CANCEL_TTL_MS = 60_000
+
 export async function DELETE(req: NextRequest) {
   const id = new URL(req.url).searchParams.get("request_id")
-  if (id) cancelled.add(id)
+  if (id) {
+    cancelled.add(id)
+    setTimeout(() => cancelled.delete(id), CANCEL_TTL_MS)
+  }
   return new Response(null, { status: 204 })
 }
 
@@ -228,6 +235,11 @@ async function* runLoop(
       }
     }
   } finally {
+    // Always release the cancellation flag, whether we observed it or not.
+    // Combined with the TTL sweep on the DELETE handler, this keeps the Set
+    // bounded across both completion-after-cancel and cancel-after-completion.
+    cancelled.delete(requestId)
+
     // Title only on the success path. Cancelled or errored turns skip the
     // Haiku call so the user pays no extra latency for a turn they're
     // already abandoning. The title lands in chat.db before yielding 'done',
