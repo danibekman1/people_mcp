@@ -1,7 +1,7 @@
 # MCP Chat — People Data
 
 A two-service monorepo demonstrating MCP fluency: a Python FastMCP server that
-ingests a 105-person CSV into SQLite and exposes a deliberate four-tool
+ingests a 106-person CSV into SQLite and exposes a deliberate four-tool
 surface, plus a Next.js chat UI that runs Claude through a visible agentic
 loop. The chat UI streams tool calls and results inline so reviewers can watch
 the model reason, hit a structured error, and self-correct in real time.
@@ -195,7 +195,7 @@ MCP surface in 30 seconds.
 - **Streamable HTTP transport** (not stdio): production-shaped, lets the
   chat backend be a separate service and lets reviewers point Claude Code at
   the same endpoint with `claude mcp add`.
-- **SQLite** for the people store: 105 rows, indexed columns, parameterized
+- **SQLite** for the people store: 106 rows, indexed columns, parameterized
   queries throughout. A larger dataset would justify Postgres; at this scale
   SQLite has zero ops cost.
 - **Schema injection in the system prompt** plus **structured tool errors**:
