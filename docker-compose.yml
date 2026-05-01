@@ -24,6 +24,10 @@ services:
       - CLAUDE_CHAT_MODEL=${CLAUDE_CHAT_MODEL:-claude-sonnet-4-6}
       - CLAUDE_TITLE_MODEL=${CLAUDE_TITLE_MODEL:-claude-haiku-4-5-20251001}
       - MCP_SERVER_URL=http://server:8000/mcp
+    volumes:
+      # Bind-mount the chat DB so conversations survive container restarts.
+      # Host path is gitignored (web/data/chat.db lives in the root .gitignore).
+      - ./web/data:/app/data
     depends_on:
       server:
         condition: service_healthy

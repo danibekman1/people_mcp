@@ -13,7 +13,10 @@ dist/
 
 # Generated DBs (rebuilt on boot)
 server/data/people.db
+# chat.db persists across restarts; the file + WAL sidecars stay out of git.
 web/data/chat.db
+web/data/chat.db-shm
+web/data/chat.db-wal
 
 # Env
 .env
