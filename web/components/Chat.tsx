@@ -1,15 +1,36 @@
 "use client"
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { Block, ChatMessage } from "@/lib/types"
 import { Message } from "./Message"
 import { Composer } from "./Composer"
 import { Suggestions } from "./Suggestions"
 
-export function Chat() {
-  const [msgs, setMsgs] = useState<ChatMessage[]>([])
+export function Chat({
+  conversationId,
+  initialMessages,
+  onConversationCreated,
+  onTurnDone,
+}: {
+  conversationId: string | null
+  initialMessages: ChatMessage[]
+  onConversationCreated: (id: string) => void
+  onTurnDone: () => void
+}) {
+  const [msgs, setMsgs] = useState<ChatMessage[]>(initialMessages)
   const [busy, setBusy] = useState(false)
   const requestIdRef = useRef<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const conversationIdRef = useRef<string | null>(conversationId)
+
+  // Keep ref in sync; SSE event handlers below close over it.
+  useEffect(() => {
+    conversationIdRef.current = conversationId
+  }, [conversationId])
+
+  // When the parent swaps the active conversation, replace messages.
+  useEffect(() => {
+    setMsgs(initialMessages)
+  }, [initialMessages])
 
   async function send(text: string) {
     setBusy(true)
@@ -30,7 +51,11 @@ export function Chat() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: text, request_id: requestId }),
+        body: JSON.stringify({
+          message: text,
+          request_id: requestId,
+          conversation_id: conversationIdRef.current ?? undefined,
+        }),
         signal: ctrl.signal,
       })
       if (!res.body) throw new Error("no body")
@@ -59,9 +84,14 @@ export function Chat() {
       setBusy(false)
       requestIdRef.current = null
       abortRef.current = null
+      onTurnDone()
     }
 
     function applyEvent(ev: any) {
+      if (ev.conversation_id && !conversationIdRef.current) {
+        conversationIdRef.current = ev.conversation_id
+        onConversationCreated(ev.conversation_id)
+      }
       setMsgs((m) =>
         withLastAssistant(m, (a) => {
           // Make immutable copies; React Strict Mode runs updaters twice in dev
@@ -114,7 +144,7 @@ export function Chat() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", minWidth: 0 }}>
       <div
         style={{
           flex: 1,
