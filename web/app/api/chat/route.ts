@@ -86,7 +86,6 @@ async function* runLoop(
   const persisted: any[] = []
   let status: MessageStatus = "done"
   let totalToolCalls = 0
-  let didPersist = false
   let finalEvent: FinalEvent | null = null
 
   function appendText(text: string) {
@@ -208,10 +207,9 @@ async function* runLoop(
         console.error("auto-titling failed", err)
       }
     }
-    if (!didPersist && persisted.length > 0) {
+    if (persisted.length > 0) {
       try {
         appendMessage(conversationId, "assistant", persisted, status)
-        didPersist = true
       } catch (err) {
         console.error("appendMessage failed", err)
       }
