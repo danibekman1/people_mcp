@@ -1,0 +1,8 @@
+as_of: 2026-04-01
+base: USD
+rates:
+  USD: 1.00
+  GBP: 1.27
+  ILS: 0.27
+months_per_year: 12
+hours_per_year: 2080  # 40 hr/week * 52 weeks; used to normalize Hourly salaries
