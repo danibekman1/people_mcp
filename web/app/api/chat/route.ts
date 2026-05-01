@@ -10,7 +10,7 @@ import {
   getMessages,
 } from "@/lib/chat-db"
 import { titleConversation } from "@/lib/titler"
-import type { MessageStatus } from "@/lib/types"
+import type { MessageStatus, PersistedBlock } from "@/lib/types"
 
 export const runtime = "nodejs"
 
@@ -83,7 +83,7 @@ async function* runLoop(
   // The persisted assistant row interleaves text / tool_use / tool_result
   // pseudo-blocks in stream order, so replay can rebuild the UI 1:1. This is
   // what design §6.5 calls "tool_result pseudo-blocks".
-  const persisted: any[] = []
+  const persisted: PersistedBlock[] = []
   let status: MessageStatus = "done"
   let totalToolCalls = 0
   let finalEvent: FinalEvent | null = null

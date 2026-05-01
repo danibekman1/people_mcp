@@ -2,7 +2,12 @@ import Database from "better-sqlite3"
 import { mkdirSync } from "node:fs"
 import { dirname, isAbsolute, resolve } from "node:path"
 import { randomUUID } from "node:crypto"
-import type { Conversation, MessageStatus, StoredMessage } from "./types"
+import type {
+  Conversation,
+  MessageStatus,
+  PersistedBlock,
+  StoredMessage,
+} from "./types"
 
 const DEFAULT_PATH = process.env.CHAT_DB_PATH ?? "data/chat.db"
 
@@ -95,7 +100,7 @@ export function getMessages(conversationId: string, path?: string): StoredMessag
     conversation_id: r.conversation_id,
     idx: r.idx,
     role: r.role,
-    blocks: JSON.parse(r.blocks_json),
+    blocks: JSON.parse(r.blocks_json) as PersistedBlock[],
     status: r.status,
     created_at: r.created_at,
   }))
@@ -104,7 +109,7 @@ export function getMessages(conversationId: string, path?: string): StoredMessag
 export function appendMessage(
   conversationId: string,
   role: "user" | "assistant",
-  blocks: any[],
+  blocks: PersistedBlock[],
   status: MessageStatus = "done",
   path?: string,
 ): void {

@@ -9,6 +9,7 @@ import {
   listConversations,
   updateTitle,
 } from "../chat-db"
+import type { PersistedBlock } from "../types"
 
 const PATH = ":memory:"
 
@@ -75,7 +76,7 @@ describe("chat-db", () => {
 
   it("appendMessage round-trips blocks via JSON", () => {
     const id = createConversation("c", PATH)
-    const blocks = [
+    const blocks: PersistedBlock[] = [
       { type: "text", text: "hi" },
       { type: "tool_use", id: "tu_1", name: "list_people", input: { team: "Bread" } },
       { type: "tool_result", tool_use_id: "tu_1", result: { count: 5 }, is_error: false },

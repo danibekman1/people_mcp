@@ -1,4 +1,4 @@
-import type { Block, ChatMessage, StoredMessage } from "./types"
+import type { Block, ChatMessage, PersistedBlock, StoredMessage } from "./types"
 
 /**
  * Convert persisted message rows back into the streaming view-model.
@@ -8,18 +8,18 @@ import type { Block, ChatMessage, StoredMessage } from "./types"
 export function storedToChatMessages(rows: StoredMessage[]): ChatMessage[] {
   return rows.map((row): ChatMessage => {
     if (row.role === "user") {
-      const text = row.blocks.find((b: any) => b?.type === "text")?.text ?? ""
+      const text = firstText(row.blocks)
       return { role: "user", text }
     }
 
     const blocks: Block[] = []
     for (const b of row.blocks) {
-      if (b?.type === "text") {
+      if (b.type === "text") {
         if (b.text) blocks.push({ kind: "text", text: b.text })
-      } else if (b?.type === "tool_use") {
+      } else if (b.type === "tool_use") {
         blocks.push({ kind: "tool", id: b.id, name: b.name, input: b.input, status: "pending" })
         blocks.push({ kind: "text", text: "" })
-      } else if (b?.type === "tool_result") {
+      } else if (b.type === "tool_result") {
         for (let i = 0; i < blocks.length; i++) {
           const x = blocks[i]
           if (x.kind === "tool" && x.id === b.tool_use_id) {
@@ -35,4 +35,11 @@ export function storedToChatMessages(rows: StoredMessage[]): ChatMessage[] {
 
     return { role: "assistant", blocks, status: row.status }
   })
+}
+
+function firstText(blocks: PersistedBlock[]): string {
+  for (const b of blocks) {
+    if (b.type === "text") return b.text
+  }
+  return ""
 }
