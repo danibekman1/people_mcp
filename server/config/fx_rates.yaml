@@ -1,4 +1,4 @@
-as_of: 2026-04-01
+as_of: "2026-04-01"
 base: USD
 rates:
   USD: 1.00
