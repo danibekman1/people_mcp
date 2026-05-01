@@ -113,23 +113,26 @@ at `web/data/chat.db`.
 
 ## 5. Eval suite
 
-Six end-to-end cases drive `make eval`. Each one POSTs a real question to
+Seven end-to-end cases drive `make eval`. Each one POSTs a real question to
 `/api/chat`, consumes the SSE stream, and asserts which tools were called,
-what arguments they got, and how the final answer reads. Latest green run:
+what arguments they got, and how the final answer reads. The harness
+supports multi-turn cases that thread `conversation_id` between turns to
+verify the agentic loop sees prior history. Latest green run:
 
 ```
-Running 6 eval case(s) against http://localhost:3000/api/chat
+Running 7 eval case(s) against http://localhost:3000/api/chat
 
 CASE                   STATUS   TIME    TOOLS
 -------------------------------------------------------------
-count_by_team           PASS     2.7s  aggregate_people
-avg_salary_normalized   PASS     3.2s  aggregate_people
-org_traversal           PASS    19.9s  get_org_subtree
-self_correction         PASS    37.6s  aggregate_people,aggregate_people,aggregate_people,aggregate_people
-ambiguous_intent        PASS    25.6s  aggregate_people
-empty_result_phrasing   PASS    25.5s  aggregate_people
+count_by_team           PASS     4.8s  aggregate_people
+avg_salary_normalized   PASS     4.5s  aggregate_people
+org_traversal           PASS     7.3s  get_org_subtree
+self_correction         PASS    35.1s  aggregate_people,aggregate_people,aggregate_people,aggregate_people
+ambiguous_intent        PASS    24.3s  aggregate_people
+empty_result_phrasing   PASS    23.8s  aggregate_people
+follow_up_currency      PASS    51.3s  aggregate_people,aggregate_people
 
-6/6 passed.
+7/7 passed.
 ```
 
 Cases live in `server/eval/cases.yaml`; the harness in
@@ -137,7 +140,11 @@ Cases live in `server/eval/cases.yaml`; the harness in
 The four `aggregate_people` calls in `self_correction` are the recovery
 loop firing: "Bakery" hits `unknown_value`, the model picks the closest
 matches from the structured error's `valid` list (Bread, Pastry,
-Viennoiserie) and counts each.
+Viennoiserie) and counts each. The two calls in `follow_up_currency` are
+the multi-turn check: turn 1 asks for the company-wide average salary in
+USD, turn 2 says "And in ILS?" - the second turn must see prior history
+to know what's being asked, and call `aggregate_people` with
+`target_currency: ILS`.
 
 Run it yourself with the docker stack up:
 

@@ -62,3 +62,27 @@
     - "not in our dataset"
     - "valid offices"
   must_not_contain: ["I don't know", "I'm not sure", "cannot determine"]
+
+# Multi-turn case: verifies the agentic loop sees prior conversation history.
+# Without history loading, the second turn would either ask for clarification
+# ('what do you want in ILS?') or claim 'this is the start of our
+# conversation'. With history, the model knows the topic is company-wide
+# average salary and re-runs aggregate_people with target_currency=ILS.
+- name: follow_up_currency
+  turns:
+    - question: "What is the average salary across the company?"
+      must_call_tool: aggregate_people
+      with_args_subset:
+        metric: avg_salary
+        target_currency: USD
+    - question: "And in ILS?"
+      must_call_tool: aggregate_people
+      with_args_subset:
+        metric: avg_salary
+        target_currency: ILS
+      answer_contains: ["ILS"]
+      must_not_contain:
+        - "start of our conversation"
+        - "don't have a previous"
+        - "what would you like"
+        - "could you clarify"

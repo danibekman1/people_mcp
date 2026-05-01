@@ -42,13 +42,20 @@ class Trace:
     done: dict[str, Any] | None = None
     errors: list[str] = field(default_factory=list)
     cancelled: bool = False
+    conversation_id: str | None = None
     raw_events: list[dict[str, Any]] = field(default_factory=list)
 
 
-def stream_chat(question: str) -> Trace:
-    """POST a question to /api/chat and collect the SSE stream into a Trace."""
+def stream_chat(question: str, conversation_id: str | None = None) -> Trace:
+    """POST a question to /api/chat and collect the SSE stream into a Trace.
+
+    Pass conversation_id to continue an existing conversation; the backend
+    will load prior history from chat.db. Pass None for a fresh thread.
+    """
     trace = Trace()
-    payload = {"message": question}
+    payload: dict[str, Any] = {"message": question}
+    if conversation_id:
+        payload["conversation_id"] = conversation_id
     with httpx.stream(
         "POST",
         CHAT_URL,
@@ -79,10 +86,13 @@ def stream_chat(question: str) -> Trace:
                 trace.tool_results.append(event)
             elif etype == "done":
                 trace.done = event
+                trace.conversation_id = event.get("conversation_id")
             elif etype == "error":
                 trace.errors.append(str(event.get("message", "")))
+                trace.conversation_id = trace.conversation_id or event.get("conversation_id")
             elif etype == "cancelled":
                 trace.cancelled = True
+                trace.conversation_id = trace.conversation_id or event.get("conversation_id")
     return trace
 
 
@@ -197,7 +207,21 @@ def _check_error_recovery(case: dict, trace: Trace, failures: list[str]) -> None
         failures.append("expects_error_recovery: error observed but no follow-up tool_call")
 
 
-def evaluate_case(case: dict) -> tuple[bool, list[str], Trace, float]:
+def _run_assertions(turn_or_case: dict, trace: Trace, failures: list[str]) -> None:
+    if trace.errors:
+        failures.append(f"server emitted error event(s): {trace.errors}")
+    if trace.cancelled:
+        failures.append("turn was cancelled")
+    if trace.done is None and not trace.cancelled and not trace.errors:
+        failures.append("stream ended without a done event")
+    _check_must_call_tool(turn_or_case, trace, failures)
+    _check_with_args_subset(turn_or_case, trace, failures)
+    _check_finally_calls_tool_with_args(turn_or_case, trace, failures)
+    _check_answer_contains(turn_or_case, trace, failures)
+    _check_error_recovery(turn_or_case, trace, failures)
+
+
+def evaluate_single_turn_case(case: dict) -> tuple[bool, list[str], Trace, float]:
     name = case["name"]
     question = case["question"]
     print(f"  -> {name}: {question!r}", flush=True)
@@ -209,20 +233,64 @@ def evaluate_case(case: dict) -> tuple[bool, list[str], Trace, float]:
     elapsed = time.time() - t0
 
     failures: list[str] = []
-    if trace.errors:
-        failures.append(f"server emitted error event(s): {trace.errors}")
-    if trace.cancelled:
-        failures.append("turn was cancelled")
-    if trace.done is None and not trace.cancelled and not trace.errors:
-        failures.append("stream ended without a done event")
-
-    _check_must_call_tool(case, trace, failures)
-    _check_with_args_subset(case, trace, failures)
-    _check_finally_calls_tool_with_args(case, trace, failures)
-    _check_answer_contains(case, trace, failures)
-    _check_error_recovery(case, trace, failures)
+    _run_assertions(case, trace, failures)
 
     return not failures, failures, trace, elapsed
+
+
+def evaluate_multi_turn_case(case: dict) -> tuple[bool, list[str], Trace, float]:
+    """Run a multi-turn case, threading conversation_id between turns.
+
+    Per-turn assertions run against that turn's trace; on any turn failing,
+    the run continues so the operator gets a full report. The aggregate
+    Trace returned has tool_calls and text concatenated across turns so the
+    summary table shows everything that happened.
+    """
+    name = case["name"]
+    turns = case["turns"]
+    print(f"  -> {name} ({len(turns)} turns)", flush=True)
+    t0 = time.time()
+
+    failures: list[str] = []
+    aggregate = Trace()
+    conv_id: str | None = None
+
+    for i, turn in enumerate(turns, start=1):
+        question = turn["question"]
+        print(f"     turn {i}: {question!r}", flush=True)
+        try:
+            trace = stream_chat(question, conversation_id=conv_id)
+        except Exception as exc:
+            failures.append(f"turn {i}: stream error: {exc!r}")
+            return False, failures, aggregate, time.time() - t0
+
+        turn_failures: list[str] = []
+        _run_assertions(turn, trace, turn_failures)
+        for tf in turn_failures:
+            failures.append(f"turn {i}: {tf}")
+
+        aggregate.text += ("\n" if aggregate.text else "") + trace.text
+        aggregate.tool_calls.extend(trace.tool_calls)
+        aggregate.tool_results.extend(trace.tool_results)
+        aggregate.raw_events.extend(trace.raw_events)
+        aggregate.errors.extend(trace.errors)
+        if trace.cancelled:
+            aggregate.cancelled = True
+        aggregate.done = trace.done  # last turn's done
+
+        if trace.conversation_id:
+            conv_id = trace.conversation_id
+        else:
+            failures.append(f"turn {i}: no conversation_id observed - cannot thread next turn")
+            break
+
+    return not failures, failures, aggregate, time.time() - t0
+
+
+def evaluate_case(case: dict) -> tuple[bool, list[str], Trace, float]:
+    if "turns" in case:
+        return evaluate_multi_turn_case(case)
+    return evaluate_single_turn_case(case)
 
 
 GREEN = "\033[32m"
