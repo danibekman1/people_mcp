@@ -1,3 +1,6 @@
+// @vitest-environment node
+// titler imports the Anthropic SDK which refuses to load in jsdom
+// (it treats jsdom as browser-like and blocks API key usage).
 import { describe, expect, it } from "vitest"
 import { sanitizeTitle } from "../titler"
 
