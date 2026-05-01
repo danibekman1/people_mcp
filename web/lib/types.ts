@@ -16,3 +16,22 @@ export type ChatMessage =
       blocks: Block[]
       status: "streaming" | "done" | "interrupted" | "cancelled" | "error"
     }
+
+export type Conversation = {
+  id: string
+  title: string
+  created_at: string
+  updated_at: string
+}
+
+export type MessageStatus = "done" | "cancelled" | "error"
+
+export type StoredMessage = {
+  id: number
+  conversation_id: string
+  idx: number
+  role: "user" | "assistant"
+  blocks: any[]
+  status: MessageStatus
+  created_at: string
+}
