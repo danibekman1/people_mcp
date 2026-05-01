@@ -9,6 +9,7 @@ import {
   getConversation,
   getMessages,
 } from "@/lib/chat-db"
+import { historyForModel } from "@/lib/history"
 import { titleConversation } from "@/lib/titler"
 import type { MessageStatus, PersistedBlock } from "@/lib/types"
 
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
   appendMessage(conversationId, "user", [{ type: "text", text: userMessage }])
 
   const stream = sseStream(runLoop(conversationId, userMessage, requestId, isFirstTurn))
+  // (history is loaded inside runLoop so the just-persisted user turn is included)
   return new Response(stream, {
     headers: {
       "Content-Type": "text/event-stream",
@@ -78,7 +80,19 @@ async function* runLoop(
   const startedAt = Date.now()
   const [tools, schema] = await Promise.all([getToolCatalogue(), getSchemaResource()])
   const system = buildSystemPrompt(schema)
-  const messages: any[] = [{ role: "user", content: userMessage }]
+  // Load full conversation history (the new user turn was already persisted by
+  // POST() before this generator started, so it's the last entry). Anthropic
+  // requires strict role alternation; historyForModel handles the split of our
+  // interleaved persisted format and drops incomplete cancelled/errored turns.
+  const messages: any[] = historyForModel(conversationId)
+  if (messages.length === 0) {
+    // Defensive: should never happen in practice, but if persistence somehow
+    // failed we fall back to the literal new turn so the request still works.
+    messages.push({ role: "user", content: userMessage })
+  }
+  console.log(
+    `[chat] conv=${conversationId.slice(0, 8)} prior=${messages.length} model=${CHAT_MODEL}`,
+  )
 
   // The persisted assistant row interleaves text / tool_use / tool_result
   // pseudo-blocks in stream order, so replay can rebuild the UI 1:1. This is

@@ -57,14 +57,11 @@ export function messagesToAnthropicHistory(
     let i = 0
     while (i < blocks.length) {
       const asstContent: AnthropicContentBlock[] = []
-      while (
-        i < blocks.length &&
-        (blocks[i].type === "text" || blocks[i].type === "tool_use")
-      ) {
+      while (i < blocks.length && blocks[i].type !== "tool_result") {
         const b = blocks[i]
         if (b.type === "text") {
           if (b.text) asstContent.push({ type: "text", text: b.text })
-        } else {
+        } else if (b.type === "tool_use") {
           asstContent.push({
             type: "tool_use",
             id: b.id,
