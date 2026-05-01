@@ -103,7 +103,43 @@ Click on a tool-call pill to expand and see the exact arguments and result.
 
 ---
 
-## 5. Inspect the MCP server with Claude Code
+## 5. Eval suite
+
+Six end-to-end cases drive `make eval`. Each one POSTs a real question to
+`/api/chat`, consumes the SSE stream, and asserts which tools were called,
+what arguments they got, and how the final answer reads. Latest green run:
+
+```
+Running 6 eval case(s) against http://localhost:3000/api/chat
+
+CASE                   STATUS   TIME    TOOLS
+-------------------------------------------------------------
+count_by_team           PASS     2.7s  aggregate_people
+avg_salary_normalized   PASS     3.2s  aggregate_people
+org_traversal           PASS    19.9s  get_org_subtree
+self_correction         PASS    37.6s  aggregate_people,aggregate_people,aggregate_people,aggregate_people
+ambiguous_intent        PASS    25.6s  aggregate_people
+empty_result_phrasing   PASS    25.5s  aggregate_people
+
+6/6 passed.
+```
+
+Cases live in `server/eval/cases.yaml`; the harness in
+`server/eval/run_eval.py` returns non-zero on any failure (CI-ready).
+The four `aggregate_people` calls in `self_correction` are the recovery
+loop firing: "Bakery" hits `unknown_value`, the model picks the closest
+matches from the structured error's `valid` list (Bread, Pastry,
+Viennoiserie) and counts each.
+
+Run it yourself with the docker stack up:
+
+```bash
+make eval
+```
+
+---
+
+## 6. Inspect the MCP server with Claude Code
 
 If you'd rather inspect the MCP server directly without the chat UI:
 
@@ -120,7 +156,7 @@ MCP surface in 30 seconds.
 
 ---
 
-## 6. How I'd extend this
+## 7. How I'd extend this
 
 - **Auth.** A real deployment would sit behind SSO and per-field RBAC (e.g.
   salary visible to managers only). The MCP server is reachable only on the
@@ -130,16 +166,13 @@ MCP surface in 30 seconds.
   (`GET /api/conversations`, `[id]`). I cut it to land Tier 1 cleanly.
 - **Sidebar + auto-titling.** A Haiku call after the first turn produces a
   title; the sidebar renders newest-first. Designed but not implemented.
-- **Eval suite.** Six YAML cases (count by team, FX-normalized averages, org
-  traversal, self-correction, ambiguous intent, empty result phrasing) drive
-  `make eval`. Designed but not implemented.
 - **Live FX rates.** Currently static config (`server/config/fx_rates.yaml`,
   `as_of: 2026-04-01`); a periodic fetcher would close that gap.
 - **Real-time CSV updates.** Ingestion is one-shot at server startup.
 
 ---
 
-## 7. Choices and trade-offs
+## 8. Choices and trade-offs
 
 - **FastMCP** over the lower-level SDK: one decorator per tool keeps the tool
   file at ~30 lines each. Worth the dependency for tool-design clarity.
@@ -168,7 +201,7 @@ MCP surface in 30 seconds.
 
 ---
 
-## 8. Project structure
+## 9. Project structure
 
 ```
 shapes/
@@ -195,6 +228,7 @@ shapes/
 │   │       └── get_org_subtree.py
 │   ├── config/fx_rates.yaml
 │   ├── data/people-list-export.csv
+│   ├── eval/               # cases.yaml + run_eval.py (make eval)
 │   └── tests/              # pytest suite (52 tests)
 └── web/
     ├── package.json
@@ -216,7 +250,7 @@ stack up; `make server`/`make web` run individual services natively.
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 - **"Port 3000/8000 already in use."** Stop the offending process or change
   the port mapping in `docker-compose.yml`.

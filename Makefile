@@ -10,7 +10,7 @@ dev:
 	@echo "Run 'make server' and 'make web' in separate terminals."
 
 eval:
-	cd server && uv run python -m eval.run_eval
+	cd server && uv run --extra dev python -m eval.run_eval
 
 test:
 	cd server && uv run pytest

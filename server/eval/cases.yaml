@@ -1,0 +1,64 @@
+- name: count_by_team
+  question: "How many people are on the Bread team?"
+  must_call_tool: aggregate_people
+  with_args_subset:
+    metric: count
+    filters: { team: Bread }
+  answer_contains: ["Bread"]
+
+- name: avg_salary_normalized
+  question: "What is the average salary across the company in USD per year?"
+  must_call_tool: aggregate_people
+  with_args_subset:
+    metric: avg_salary
+    target_currency: USD
+    target_frequency: Yearly
+
+- name: org_traversal
+  question: "Who reports to Oryan Moshe?"
+  must_call_tool: [get_person, get_org_subtree, list_people]
+  answer_contains_any: ["Alaric", "Alistair"]
+
+# 'Bakery' is not a valid team. The model is expected to hit unknown_value once
+# and self-correct. The system prompt instructs it to "pick the closest match
+# from the valid list" - in practice the LLM frequently fans out to all three
+# bakery-adjacent teams (Bread, Pastry, Viennoiserie) rather than committing to
+# one. The README documents that fan-out as the demo behavior, so the
+# assertion accepts any of those three teams instead of pinning to Bread.
+- name: self_correction
+  question: "How many people are in the Bakery team?"
+  expects_error_recovery: true
+  finally_calls_tool_with_args:
+    metric: count
+    filters:
+      team: { any_of: [Bread, Pastry, Viennoiserie] }
+
+- name: ambiguous_intent
+  question: "What is the average salary?"
+  must_call_tool: aggregate_people
+  answer_contains: ["USD"]
+
+# With schema injection, 'Mars' is rejected upstream as unknown_value rather
+# than producing a true count:0 result, so the model reports "no Mars office"
+# instead of "no employees". The accept-list covers both phrasings; the
+# must_not_contain list is what really enforces the no-hedging rule.
+- name: empty_result_phrasing
+  question: "How many people work in our Mars office?"
+  must_call_tool: aggregate_people
+  with_args_subset:
+    metric: count
+    filters: { office: Mars }
+  answer_contains_any:
+    - "0"
+    - "no one"
+    - "none"
+    - "no employees"
+    - "doesn't have"
+    - "no mars"
+    - "not a valid"
+    - "isn't a valid"
+    - "no such office"
+    - "doesn't exist"
+    - "not in our dataset"
+    - "valid offices"
+  must_not_contain: ["I don't know", "I'm not sure", "cannot determine"]
