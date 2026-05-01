@@ -9,6 +9,7 @@ import {
   getConversation,
   getMessages,
 } from "@/lib/chat-db"
+import { titleConversation } from "@/lib/titler"
 import type { MessageStatus } from "@/lib/types"
 
 export const runtime = "nodejs"
@@ -57,6 +58,18 @@ function initialTitle(question: string): string {
   return question.length <= 40 ? question : question.slice(0, 40)
 }
 
+type FinalEvent =
+  | {
+      type: "done"
+      conversation_id: string
+      title?: string
+      total_ms: number
+      iters: number
+      tool_calls: number
+    }
+  | { type: "cancelled"; conversation_id: string; title?: string }
+  | { type: "error"; conversation_id: string; message: string; title?: string }
+
 async function* runLoop(
   conversationId: string,
   userMessage: string,
@@ -75,6 +88,7 @@ async function* runLoop(
   let status: MessageStatus = "done"
   let totalToolCalls = 0
   let didPersist = false
+  let finalEvent: FinalEvent | null = null
 
   function appendText(text: string) {
     if (!text) return
@@ -87,12 +101,12 @@ async function* runLoop(
   }
 
   try {
-    for (let iter = 0; iter < MAX_ITERS; iter++) {
+    outer: for (let iter = 0; iter < MAX_ITERS; iter++) {
       if (cancelled.has(requestId)) {
         cancelled.delete(requestId)
         status = "cancelled"
-        yield { type: "cancelled", conversation_id: conversationId }
-        return
+        finalEvent = { type: "cancelled", conversation_id: conversationId }
+        break outer
       }
 
       const stream = anthropic.messages.stream({
@@ -108,8 +122,8 @@ async function* runLoop(
           ;(stream as any).controller?.abort?.()
           cancelled.delete(requestId)
           status = "cancelled"
-          yield { type: "cancelled", conversation_id: conversationId }
-          return
+          finalEvent = { type: "cancelled", conversation_id: conversationId }
+          break outer
         }
         if (
           event.type === "content_block_delta" &&
@@ -138,14 +152,14 @@ async function* runLoop(
 
       if (toolUses.length === 0) {
         status = "done"
-        yield {
+        finalEvent = {
           type: "done",
           conversation_id: conversationId,
           total_ms: Date.now() - startedAt,
           iters: iter + 1,
           tool_calls: totalToolCalls,
         }
-        return
+        break outer
       }
 
       const results: any[] = []
@@ -175,21 +189,35 @@ async function* runLoop(
       }
       messages.push({ role: "user", content: results })
     }
-    status = "error"
-    yield { type: "error", conversation_id: conversationId, message: "max iterations exceeded" }
+    if (!finalEvent) {
+      status = "error"
+      finalEvent = {
+        type: "error",
+        conversation_id: conversationId,
+        message: "max iterations exceeded",
+      }
+    }
   } finally {
+    // Auto-title on the first turn before persisting + yielding the final
+    // event, so the sidebar refresh fired by 'done' picks up the new title
+    // immediately. Falls back silently to the truncated initial title on
+    // timeout/failure (see web/lib/titler.ts).
+    if (isFirstTurn) {
+      try {
+        const title = await titleConversation(conversationId, userMessage)
+        if (title && finalEvent) finalEvent.title = title
+      } catch (err) {
+        console.error("auto-titling failed", err)
+      }
+    }
     if (!didPersist && persisted.length > 0) {
       try {
         appendMessage(conversationId, "assistant", persisted, status)
         didPersist = true
       } catch (err) {
-        // Don't crash the response on a persistence failure; just log.
         console.error("appendMessage failed", err)
       }
     }
-    // isFirstTurn is wired here so a follow-up commit can plug in titling
-    // without restructuring this generator. Reference it so eslint/tsc don't
-    // complain about an unused parameter.
-    void isFirstTurn
+    if (finalEvent) yield finalEvent
   }
 }
