@@ -6,8 +6,8 @@ surface, plus a Next.js chat UI that runs Claude through a visible agentic
 loop. The chat UI streams tool calls and results inline so reviewers can watch
 the model reason, hit a structured error, and self-correct in real time.
 
-What's intentionally not in scope: auth/RBAC, conversation persistence,
-multi-tenant, live FX rates. See "Choices and trade-offs" below.
+What's intentionally not in scope: auth/RBAC, multi-tenant, live FX rates.
+See "Choices and trade-offs" below.
 
 ---
 
@@ -63,7 +63,9 @@ boot, exposes four tools — `list_people`, `aggregate_people`, `get_person`,
 route holds an MCP TS client and Anthropic SDK and runs an agentic loop
 (`MAX_ITERS=8`), forwarding text deltas, tool calls, and tool results to the
 browser as SSE events. The browser stitches them into a single message bubble
-with inline tool-call pills.
+with inline tool-call pills. Conversations persist to `web/data/chat.db`
+(SQLite) with a sidebar for switching between them; new chats are
+auto-titled by a Haiku call after the first turn.
 
 ---
 
@@ -100,6 +102,12 @@ Five questions to paste into the chat:
    `sort_by: tenure desc`.
 
 Click on a tool-call pill to expand and see the exact arguments and result.
+
+The sidebar lists every conversation you've had with the chat (newest-first,
+auto-titled by Haiku after the first turn). Click any row to replay the full
+back-and-forth — pills, results, answer text — exactly as it happened.
+Conversations persist across container restarts via a bind-mounted SQLite DB
+at `web/data/chat.db`.
 
 ---
 
@@ -161,11 +169,12 @@ MCP surface in 30 seconds.
 - **Auth.** A real deployment would sit behind SSO and per-field RBAC (e.g.
   salary visible to managers only). The MCP server is reachable only on the
   docker network in this demo.
-- **Conversation persistence.** The design doc has a `chat.db` schema for
-  conversations + messages keyed on `blocks_json`; the routes are sketched
-  (`GET /api/conversations`, `[id]`). I cut it to land Tier 1 cleanly.
-- **Sidebar + auto-titling.** A Haiku call after the first turn produces a
-  title; the sidebar renders newest-first. Designed but not implemented.
+- **Cancellation re-stream.** A cancelled turn's partial assistant blocks
+  are persisted with `status='cancelled'` and replayed correctly, but
+  there's no "Resume" button to re-send the same prompt against the
+  partial - clicking a cancelled conversation just shows the partial.
+- **Multi-tab live sync.** Two tabs on the same conversation see each
+  other's history on reload but don't share a live SSE stream.
 - **Live FX rates.** Currently static config (`server/config/fx_rates.yaml`,
   `as_of: 2026-04-01`); a periodic fetcher would close that gap.
 - **Real-time CSV updates.** Ingestion is one-shot at server startup.
@@ -192,6 +201,20 @@ MCP surface in 30 seconds.
 - **Visible agentic loop, inline pills**: the whole point of an "AI product"
   signal is making the agent's reasoning legible. Pills appear in pending
   state, flip to ok or error when the result lands.
+- **Persisted block format = streaming order, not Anthropic API order.**
+  The Anthropic API puts tool_results in the *next* user message, but for
+  replay we want them inline with the assistant's text/tool_use blocks
+  (that's how the bubble renders live). The persisted assistant row is a
+  synthesized interleaved array `[text, tool_use, tool_result-pseudo,
+  text, ...]` matching the streaming order. Replay is then a 1:1 mapping
+  back to the streaming view-model. (Two small schema deviations from the
+  design doc: a `status` column on `messages` to distinguish cancelled
+  rows on replay, and millisecond-precision timestamps so multiple writes
+  in the same second sort deterministically.)
+- **Server-authoritative conversation IDs.** Client posts no ID on first
+  turn; server creates the row and returns the UUID on `done`. Sub-second
+  lag for the sidebar is fine, and the invariant ("a row exists ↔ the
+  server created it") avoids client/server ID-generation contracts.
 - **Hourly salaries normalize via `hours_per_year: 2080`** (40 hr/wk × 52
   weeks). Real HR systems would use FTE-aware math; this is a documented
   approximation.
@@ -233,20 +256,27 @@ shapes/
 └── web/
     ├── package.json
     ├── Dockerfile
+    ├── data/               # bind-mounted into the container; chat.db lives here
     ├── app/
-    │   ├── page.tsx        # the chat UI
-    │   └── api/chat/route.ts   # SSE-streaming agentic loop
-    ├── components/         # Chat, Message, ToolCallPill, etc.
+    │   ├── page.tsx        # two-pane layout: sidebar + chat
+    │   └── api/
+    │       ├── chat/route.ts          # SSE-streaming agentic loop
+    │       └── conversations/         # list + replay endpoints
+    ├── components/         # Chat, Message, ToolCallPill, Sidebar, etc.
     └── lib/
         ├── mcp-client.ts   # singleton MCP client + helpers
         ├── anthropic.ts    # Anthropic SDK wrapper
         ├── prompts.ts      # system prompt builder
+        ├── chat-db.ts      # better-sqlite3 wrapper (conversations + messages)
+        ├── replay.ts       # persisted blocks -> streaming view-model
+        ├── titler.ts       # Haiku auto-titling helper
         ├── sse.ts          # SSE encoder
         └── types.ts
 ```
 
-Make targets: `make test` runs both unit suites; `make docker-up` brings the
-stack up; `make server`/`make web` run individual services natively.
+Make targets: `make test` runs both unit suites; `make eval` runs the
+six-case end-to-end eval; `make docker-up` brings the stack up;
+`make server`/`make web` run individual services natively.
 
 ---
 
