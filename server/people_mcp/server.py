@@ -5,12 +5,16 @@ Ingests CSV at startup; tools come online once the DB is ready.
 """
 from __future__ import annotations
 import logging
-import os
 from pathlib import Path
 
 from fastmcp import FastMCP
 from people_mcp.db import connect, ensure_schema
 from people_mcp.ingest import ingest_csv
+from people_mcp.tools.list_people import list_people as _list_people
+from people_mcp.tools.aggregate_people import aggregate_people as _aggregate_people
+from people_mcp.tools.get_person import get_person as _get_person
+from people_mcp.tools.get_org_subtree import get_org_subtree as _get_org_subtree
+from people_mcp.schema import build_schema_payload
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -36,14 +40,95 @@ def get_conn():
 
 
 @mcp.tool()
-def hello() -> dict:
-    """Smoke-test tool. Returns server identity. Removed once real tools land."""
-    return {"server": "people-mcp", "ok": True}
+def list_people(
+    filters: dict | None = None,
+    sort_by: str | None = None,
+    limit: int | None = None,
+) -> dict:
+    """List people matching filters.
+
+    Filters:
+      - team, office, city, country, contract_type, work_status, gender:
+        exact match against valid values from the people://schema resource.
+      - job_contains, name_contains: substring match.
+      - hired_after, hired_before: ISO date YYYY-MM-DD.
+
+    sort_by: '<key> <asc|desc>' where key is salary, start_date, name, or tenure.
+    limit: default 50, max 200.
+
+    On invalid filter values the response includes
+    {"error": "unknown_value", "valid": [...]} - retry with one of those values.
+    """
+    with get_conn() as conn:
+        return _list_people(conn, filters=filters, sort_by=sort_by, limit=limit)
+
+
+@mcp.tool()
+def aggregate_people(
+    metric: str,
+    group_by: str = "none",
+    filters: dict | None = None,
+    target_currency: str = "USD",
+    target_frequency: str = "Yearly",
+) -> dict:
+    """Aggregate people by metric and group.
+
+    metric: count | avg_salary | sum_salary | min_salary | max_salary
+    group_by: team | office | city | country | job | contract_type | gender | none
+
+    For salary metrics, target_currency (USD|GBP|ILS) and target_frequency
+    (Yearly|Monthly|Hourly) control normalization. FX rates are static; the
+    'fx_rates_as_of' field is included in the response. Use this for any
+    'how many' or numeric-summary question.
+    """
+    with get_conn() as conn:
+        return _aggregate_people(
+            conn,
+            metric=metric,
+            group_by=group_by,
+            filters=filters,
+            target_currency=target_currency,
+            target_frequency=target_frequency,
+        )
+
+
+@mcp.tool()
+def get_person(full_name: str | None = None, work_email: str | None = None) -> dict:
+    """Look up a single person by full_name or work_email.
+
+    Returns the person plus their manager (if any) and direct reports. Use
+    for 'tell me about X' or 'who is X's manager' questions.
+    """
+    with get_conn() as conn:
+        return _get_person(conn, full_name=full_name, work_email=work_email)
+
+
+@mcp.tool()
+def get_org_subtree(root_name: str | None = None, max_depth: int | None = None) -> dict:
+    """Reporting hierarchy as a nested tree.
+
+    Omit root_name for the full org. Returns
+    {root: {full_name, job, team, reports: [...]}}. Includes a 'warnings'
+    field if a cycle was detected in the reports_to chain.
+    """
+    with get_conn() as conn:
+        return _get_org_subtree(conn, root_name=root_name, max_depth=max_depth)
+
+
+@mcp.resource("people://schema")
+def schema_resource() -> dict:
+    """Schema and distinct values for the people dataset.
+
+    Read this once on startup so you know the valid filter values
+    (team names, office names, etc.) before calling list_people or
+    aggregate_people.
+    """
+    with get_conn() as conn:
+        return build_schema_payload(conn)
 
 
 def main() -> None:
     _bootstrap()
-    # Streamable HTTP at /mcp on 0.0.0.0:8000
     mcp.run(transport="streamable-http", host="0.0.0.0", port=8000, path="/mcp")
 
 
