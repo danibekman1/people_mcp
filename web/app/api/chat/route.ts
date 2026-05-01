@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server"
+import { z } from "zod"
 import { anthropic, CHAT_MODEL, MAX_ITERS } from "@/lib/anthropic"
 import { buildSystemPrompt } from "@/lib/prompts"
 import { callTool, getSchemaResource, getToolCatalogue } from "@/lib/mcp-client"
@@ -15,17 +16,34 @@ import type { MessageStatus, PersistedBlock } from "@/lib/types"
 
 export const runtime = "nodejs"
 
+// Request body shape. zod validation happens at the route boundary so the
+// rest of the file can trust the inputs - no scattered defensive checks.
+const ChatRequestSchema = z.object({
+  message: z.string().min(1, "message must not be empty").max(4000, "message exceeds 4000 chars"),
+  request_id: z.string().uuid().optional(),
+  conversation_id: z.string().uuid().optional(),
+})
+
 // In-memory cancellation flags. Keyed by ad-hoc client request id.
 const cancelled = new Set<string>()
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
-  const userMessage: string = body.message
-  const requestId: string = body.request_id ?? crypto.randomUUID()
-  const incomingConvId: string | undefined = body.conversation_id
-  if (!userMessage) {
-    return new Response(JSON.stringify({ error: "missing 'message'" }), { status: 400 })
+  let body: unknown
+  try {
+    body = await req.json()
+  } catch {
+    return Response.json({ error: "invalid_json" }, { status: 400 })
   }
+
+  const parsed = ChatRequestSchema.safeParse(body)
+  if (!parsed.success) {
+    return Response.json(
+      { error: "invalid_request", issues: parsed.error.issues },
+      { status: 400 },
+    )
+  }
+  const { message: userMessage, conversation_id: incomingConvId } = parsed.data
+  const requestId: string = parsed.data.request_id ?? crypto.randomUUID()
 
   let conversationId: string
   if (incomingConvId && getConversation(incomingConvId)) {
